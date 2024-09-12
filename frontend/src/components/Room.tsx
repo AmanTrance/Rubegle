@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ws } from "../main";
+import Image from "../../public/icon.jpg";
 
 function Room() {
     const [offer, setOffer] = useState<boolean>(false);
@@ -171,12 +172,15 @@ function Room() {
 
 
   return (
-    <div className="grid grid-cols-2 bg-gray-800 h-full w-full">
-        <div className="flex justify-center items-center bg-black">
-            <video className="w-3/4 h-2/4 bg-gray-800 object-cover scale-x-[-1]" autoPlay ref={localStream}></video>
-        </div>
-        <div className="flex justify-center items-center bg-black">
-            <video className="w-3/4 h-2/4 bg-gray-800 object-cover scale-x-[-1]" autoPlay ref={remoteStream}></video>
+    <div className="flex justify-center items-center h-full w-full">
+        <img src={Image} className="h-96 lg:w-72 w-96 fixed"></img>
+        <div className="grid lg:grid-cols-2 lg:grid-rows-1 grid-rows-2 grid-cols-1 bg-gray-800 h-full w-full">
+            <div className="flex justify-center items-center bg-black">
+                <video className="lg:w-3/4 lg:h-2/4 w-3/4 h-3/4 bg-gray-800 object-cover scale-x-[-1] rounded-lg" autoPlay ref={localStream}></video>
+            </div>
+            <div className="flex justify-center items-center bg-black">
+                <video className="lg:w-3/4 lg:h-2/4 w-3/4 h-3/4 bg-gray-800 object-cover scale-x-[-1] rounded-lg" autoPlay ref={remoteStream}></video>
+            </div>
         </div>
     </div>
   )
