@@ -3,12 +3,11 @@ import { ws } from "../main";
 
 function Room() {
     const [offer, setOffer] = useState<boolean>(false);
-    const [ans, setAns] = useState<boolean>(false);
     const localStream = useRef<HTMLVideoElement>(null);
     const remoteStream = useRef<HTMLVideoElement>(null);
     const connection: RTCPeerConnection = new RTCPeerConnection({
         iceServers: [
-            { urls: "stun:stun2.l.google.com:19302" }
+            { urls: ["stun:stun2.l.google.com:19302"] }
         ]
     });
 
@@ -32,7 +31,7 @@ function Room() {
                 window.sessionStorage.setItem("roomId", message.message.roomId);
             }
             if (message.message?.type === "send") {
-                setTimeout(() => {
+                setTimeout(function(){
                     setOffer(true);
                 }, 10000);
             }
@@ -42,31 +41,49 @@ function Room() {
             }
             if (message.message?.type === "sdp" && message.message?.id !== window.sessionStorage.getItem("id")) {
                 connection.setRemoteDescription(message.message.sdp).then(() => {
-                    console.log("Remote SDP added");
-                    if (offer === false && ans === false) {
-                        setAns(true);
+                    if (offer === false) {
+                        connection.createAnswer().then((sdp) => {
+                            connection.setLocalDescription(sdp).then(() => {
+                                ws.send(JSON.stringify({
+                                    command: "message",
+                                    identifier: JSON.stringify({
+                                        channel: "SignalChannel"
+                                    }),
+                                    data: JSON.stringify({
+                                        action: "exchangeSdp",
+                                        roomId: window.sessionStorage.getItem("roomId"),
+                                        id: window.sessionStorage.getItem("id"),
+                                        sdp: sdp
+                                    })
+                                }));
+                            })
+                        })
                     }
                 }).catch((e) => console.log("Remote SDP not added", e));
-                console.log(message.message);
             }
         }
     }
 
     connection.onnegotiationneeded = async (_: Event) => {
-        const sdp: RTCSessionDescriptionInit = await connection.createOffer();
-        await connection.setLocalDescription(sdp);
-        ws.send(JSON.stringify({
-            command: "message",
-            identifier: JSON.stringify({
-                channel: "SignalChannel"
-            }),
-            data: JSON.stringify({
-                action: "exchangeSdp",
-                roomId: window.sessionStorage.getItem("roomId"),
-                id: window.sessionStorage.getItem("id"),
-                sdp: sdp
-            })
-        }));
+        if (offer === true) {
+            const sdp: RTCSessionDescriptionInit = await connection.createOffer();
+            await connection.setLocalDescription(sdp);
+            ws.send(JSON.stringify({
+                command: "message",
+                identifier: JSON.stringify({
+                    channel: "SignalChannel"
+                }),
+                data: JSON.stringify({
+                    action: "exchangeSdp",
+                    roomId: window.sessionStorage.getItem("roomId"),
+                    id: window.sessionStorage.getItem("id"),
+                    sdp: sdp
+                })
+            }));    
+        } else {
+            const sdp: RTCSessionDescriptionInit = await connection.createOffer();
+            await connection.setLocalDescription(sdp);
+        }
     }
 
     connection.onicecandidate = (event: RTCPeerConnectionIceEvent) => {
@@ -89,6 +106,7 @@ function Room() {
     }
 
     connection.ontrack = (event: RTCTrackEvent) => {
+        console.log(event.streams);
         if (remoteStream.current !== null) {
             console.log(event.streams);
             remoteStream.current.srcObject = event.streams[0];
@@ -119,31 +137,6 @@ function Room() {
         handleOffer();
 
     }, [offer]);
-
-    useEffect(() => {
-        const handleAns = async () => {
-            if (ans === false) {
-                return;
-            }
-            const sdp: RTCSessionDescriptionInit = await connection.createOffer();
-            await connection.setLocalDescription(sdp);
-            ws.send(JSON.stringify({
-                command: "message",
-                identifier: JSON.stringify({
-                    channel: "SignalChannel"
-                }),
-                data: JSON.stringify({
-                    action: "exchangeSdp",
-                    roomId: window.sessionStorage.getItem("roomId"),
-                    id: window.sessionStorage.getItem("id"),
-                    sdp: sdp
-                })
-            }));
-        }
-
-        handleAns();
-
-    }, [ans]);
 
 
   return (

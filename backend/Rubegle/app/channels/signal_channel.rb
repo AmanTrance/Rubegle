@@ -15,13 +15,13 @@ class SignalChannel < ApplicationCable::Channel
     else
       room = @@rooms.pop
       room.append(data["username"])
-      sleep 10
+      sleep 8
       ActionCable.server.broadcast("room#{room.id}", {
       :type => "send"
     })
     end
     stream_from "room#{room.id}"
-    sleep 10
+    sleep 5
     ActionCable.server.broadcast("room#{room.id}", {
       :roomId => "room#{room.id}",
       :type => "roomId"
