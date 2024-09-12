@@ -5,7 +5,12 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}"
   ],
   theme: {
-    extend: {},
+    extend: {
+      spacing:{
+        "128": "42rem",
+        "120": "36rem"
+      }
+    },
   },
   plugins: [],
 }

@@ -18,10 +18,12 @@ ws.onopen = () => {
   }
 
 createRoot(document.getElementById('root')!).render(
+  <>
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<App/>}/>
         <Route path="/room" element={<Room/>}/>
       </Routes>
     </BrowserRouter>
+  </>
 )

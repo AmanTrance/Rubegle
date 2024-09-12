@@ -1,23 +1,73 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ws } from "../main";
 
 function Room() {
     const [offer, setOffer] = useState<boolean>(false);
     const [ans, setAns] = useState<boolean>(false);
+    const localStream = useRef<HTMLVideoElement>(null);
+    const remoteStream = useRef<HTMLVideoElement>(null);
     const connection: RTCPeerConnection = new RTCPeerConnection({
         iceServers: [
-            { urls: "stun:stun.l.google.com:19302" },
-            { urls: "stun:stun.l.google.com:5349" },
-            { urls: "stun:stun1.l.google.com:3478" },
-            { urls: "stun:stun1.l.google.com:5349" },
-            { urls: "stun:stun2.l.google.com:19302" },
-            { urls: "stun:stun2.l.google.com:5349" },
-            { urls: "stun:stun3.l.google.com:3478" },
-            { urls: "stun:stun3.l.google.com:5349" },
-            { urls: "stun:stun4.l.google.com:19302" },
-            { urls: "stun:stun4.l.google.com:5349" }
+            { urls: "stun:stun2.l.google.com:19302" }
         ]
     });
+
+    useEffect(() => {
+        const handleMedia = async () => {
+            const stream: MediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            stream.getTracks().forEach((track) => {
+                connection.addTrack(track, stream);
+            });
+            if (localStream.current !== null) {
+                localStream.current.srcObject = stream; 
+            }
+        }
+        handleMedia();
+    }, []);
+
+    ws.onmessage = (e: MessageEvent) => {
+        const message = JSON.parse(e.data);
+        if (typeof message.message !== "number") {
+            if (message.message?.type === "roomId") {
+                window.sessionStorage.setItem("roomId", message.message.roomId);
+            }
+            if (message.message?.type === "send") {
+                setTimeout(() => {
+                    setOffer(true);
+                }, 10000);
+            }
+            if (message.message?.type === "ice" && message.message?.id !== window.sessionStorage.getItem("id")) {
+                connection.addIceCandidate(message.message.ice).then(() => console.log("ICE added")).catch((e) => console.log("ICE not added", e));
+                console.log(message.message.ice);
+            }
+            if (message.message?.type === "sdp" && message.message?.id !== window.sessionStorage.getItem("id")) {
+                connection.setRemoteDescription(message.message.sdp).then(() => {
+                    console.log("Remote SDP added");
+                    if (offer === false && ans === false) {
+                        setAns(true);
+                    }
+                }).catch((e) => console.log("Remote SDP not added", e));
+                console.log(message.message);
+            }
+        }
+    }
+
+    connection.onnegotiationneeded = async (_: Event) => {
+        const sdp: RTCSessionDescriptionInit = await connection.createOffer();
+        await connection.setLocalDescription(sdp);
+        ws.send(JSON.stringify({
+            command: "message",
+            identifier: JSON.stringify({
+                channel: "SignalChannel"
+            }),
+            data: JSON.stringify({
+                action: "exchangeSdp",
+                roomId: window.sessionStorage.getItem("roomId"),
+                id: window.sessionStorage.getItem("id"),
+                sdp: sdp
+            })
+        }));
+    }
 
     connection.onicecandidate = (event: RTCPeerConnectionIceEvent) => {
         if (offer === false) {
@@ -38,29 +88,10 @@ function Room() {
         }
     }
 
-    ws.onmessage = (e: MessageEvent) => {
-        const message = JSON.parse(e.data);
-        if (typeof message.message !== "number") {
-            if (message.message?.type === "roomId") {
-                window.sessionStorage.setItem("roomId", message.message.roomId);
-                console.log(message.message.roomId);
-            }
-            if (message.message?.type === "send") {
-                setTimeout(() => {
-                    setOffer(true);
-                }, 10000);
-            }
-            if (message.message?.type === "ice" && message.message?.id !== window.sessionStorage.getItem("id")) {
-                connection.addIceCandidate(message.message.ice).then(() => console.log("ICE added")).catch(() => console.log("ICE not added"));
-                console.log(message.message.ice);
-            }
-            if (message.message?.type === "sdp" && message.message?.id !== window.sessionStorage.getItem("id")) {
-                connection.setRemoteDescription(message.message.sdp).then(() => console.log("Remote SDP added")).catch(() => console.log("Remote SDP not added"));
-                console.log(message.message.sdp);
-                if (offer === false && ans === false) {
-                    setAns(true);
-                }
-            }
+    connection.ontrack = (event: RTCTrackEvent) => {
+        if (remoteStream.current !== null) {
+            console.log(event.streams);
+            remoteStream.current.srcObject = event.streams[0];
         }
     }
 
@@ -69,7 +100,7 @@ function Room() {
             if (offer === false) {
                 return;
             }
-            const sdp = await connection.createOffer();
+            const sdp: RTCSessionDescriptionInit = await connection.createOffer();
             await connection.setLocalDescription(sdp);
             ws.send(JSON.stringify({
                 command: "message",
@@ -94,7 +125,7 @@ function Room() {
             if (ans === false) {
                 return;
             }
-            const sdp = await connection.createAnswer();
+            const sdp: RTCSessionDescriptionInit = await connection.createOffer();
             await connection.setLocalDescription(sdp);
             ws.send(JSON.stringify({
                 command: "message",
@@ -117,11 +148,11 @@ function Room() {
 
   return (
     <div className="grid grid-cols-2 bg-gray-800 h-full w-full">
-        <div className="flex justify-center items-center bg-purple-300">
-
+        <div className="flex justify-center items-center bg-black">
+            <video className="w-3/4 h-2/4 bg-gray-800 object-cover scale-x-[-1]" autoPlay ref={localStream}></video>
         </div>
-        <div className="flex justify-center items-center bg-purple-900">
-
+        <div className="flex justify-center items-center bg-black">
+            <video className="w-3/4 h-2/4 bg-gray-800 object-cover scale-x-[-1]" autoPlay ref={remoteStream}></video>
         </div>
     </div>
   )
