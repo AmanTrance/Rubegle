@@ -15,7 +15,7 @@ class SignalChannel < ApplicationCable::Channel
     else
       room = @@rooms.pop
       room.append(data["username"])
-      sleep 8
+      sleep 2
       ActionCable.server.broadcast("room#{room.id}", {
       :type => "send"
     })
@@ -37,11 +37,22 @@ class SignalChannel < ApplicationCable::Channel
   end
 
   def exchangeIce(data)
+    if data["ice"] == nil then
+      return
+    else
+      ActionCable.server.broadcast("#{data["roomId"]}", {
+        :ice => data["ice"],
+        :id => data["id"],
+        :type => "ice"
+      })  
+    end 
+  end
+
+  def success(data)
     ActionCable.server.broadcast("#{data["roomId"]}", {
-      :ice => data["ice"],
       :id => data["id"],
-      :type => "ice"
-    })
+      :type => "success"
+    }) 
   end
 
   def unsubscribed

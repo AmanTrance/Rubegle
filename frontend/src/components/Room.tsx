@@ -3,6 +3,8 @@ import { ws } from "../main";
 
 function Room() {
     const [offer, setOffer] = useState<boolean>(false);
+    const [ans, setAns] = useState<boolean>(false);
+    const [success, setSuccess] = useState<boolean>(false);
     const localStream = useRef<HTMLVideoElement>(null);
     const remoteStream = useRef<HTMLVideoElement>(null);
     const connection: RTCPeerConnection = new RTCPeerConnection({
@@ -12,17 +14,22 @@ function Room() {
     });
 
     useEffect(() => {
-        const handleMedia = async () => {
-            const stream: MediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        if (success === false) return;
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream) => {
             stream.getTracks().forEach((track) => {
-                connection.addTrack(track, stream);
+              connection.addTrack(track, stream);
             });
             if (localStream.current !== null) {
-                localStream.current.srcObject = stream; 
-            }
+              localStream.current.srcObject = stream;
+            }  
+          });
+    }, [success]);
+
+    connection.ontrack = (event: RTCTrackEvent) => {
+        if (remoteStream.current !== null) {
+            remoteStream.current.srcObject = event.streams[0];
         }
-        handleMedia();
-    }, []);
+    }
 
     ws.onmessage = (e: MessageEvent) => {
         const message = JSON.parse(e.data);
@@ -35,13 +42,22 @@ function Room() {
                     setOffer(true);
                 }, 10000);
             }
+            if (message.message?.type === "success" && message.message?.id !== window.sessionStorage.getItem("id")) {
+                if (success === false) {
+                    setSuccess(true);
+                } else {
+                    return;
+                }
+            }
             if (message.message?.type === "ice" && message.message?.id !== window.sessionStorage.getItem("id")) {
                 connection.addIceCandidate(message.message.ice).then(() => console.log("ICE added")).catch((e) => console.log("ICE not added", e));
-                console.log(message.message.ice);
             }
             if (message.message?.type === "sdp" && message.message?.id !== window.sessionStorage.getItem("id")) {
                 connection.setRemoteDescription(message.message.sdp).then(() => {
                     if (offer === false) {
+                        if (ans === false) {
+                            setAns(true);
+                        }
                         connection.createAnswer().then((sdp) => {
                             connection.setLocalDescription(sdp).then(() => {
                                 ws.send(JSON.stringify({
@@ -56,6 +72,20 @@ function Room() {
                                         sdp: sdp
                                     })
                                 }));
+                                ws.send(JSON.stringify({
+                                    command: "message",
+                                    identifier: JSON.stringify({
+                                        channel: "SignalChannel"
+                                    }),
+                                    data: JSON.stringify({
+                                        action: "success",
+                                        roomId: window.sessionStorage.getItem("roomId"),
+                                        id: window.sessionStorage.getItem("id")
+                                    })
+                                }));
+                                if (success === false) {
+                                    setSuccess(true);
+                                }
                             })
                         })
                     }
@@ -64,7 +94,7 @@ function Room() {
         }
     }
 
-    connection.onnegotiationneeded = async (_: Event) => {
+    connection.onnegotiationneeded = async () => {
         if (offer === true) {
             const sdp: RTCSessionDescriptionInit = await connection.createOffer();
             await connection.setLocalDescription(sdp);
@@ -80,37 +110,38 @@ function Room() {
                     sdp: sdp
                 })
             }));    
-        } else {
-            const sdp: RTCSessionDescriptionInit = await connection.createOffer();
+        } 
+        else if (ans === true) {
+            const sdp: RTCSessionDescriptionInit = await connection.createAnswer();
             await connection.setLocalDescription(sdp);
-        }
-    }
-
-    connection.onicecandidate = (event: RTCPeerConnectionIceEvent) => {
-        if (offer === false) {
-            return;
-        } else {
             ws.send(JSON.stringify({
                 command: "message",
                 identifier: JSON.stringify({
                     channel: "SignalChannel"
                 }),
                 data: JSON.stringify({
-                    action: "exchangeIce",
+                    action: "exchangeSdp",
                     roomId: window.sessionStorage.getItem("roomId"),
                     id: window.sessionStorage.getItem("id"),
-                    ice: event.candidate
+                    sdp: sdp
                 })
-            }));
+            }));    
         }
     }
 
-    connection.ontrack = (event: RTCTrackEvent) => {
-        console.log(event.streams);
-        if (remoteStream.current !== null) {
-            console.log(event.streams);
-            remoteStream.current.srcObject = event.streams[0];
-        }
+    connection.onicecandidate = (event: RTCPeerConnectionIceEvent) => {
+        ws.send(JSON.stringify({
+            command: "message",
+            identifier: JSON.stringify({
+                channel: "SignalChannel"
+            }),
+            data: JSON.stringify({
+                action: "exchangeIce",
+                roomId: window.sessionStorage.getItem("roomId"),
+                id: window.sessionStorage.getItem("id"),
+                ice: event.candidate
+            })
+        }));
     }
 
     useEffect(() => {
