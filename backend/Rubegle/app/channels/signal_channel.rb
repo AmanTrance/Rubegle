@@ -32,7 +32,8 @@ class SignalChannel < ApplicationCable::Channel
     ActionCable.server.broadcast("#{data["roomId"]}", {
       :sdp => data["sdp"],
       :id => data["id"],
-      :type => "sdp"
+      :type => "sdp",
+      :username => data["username"]
     })
   end
 
@@ -51,7 +52,8 @@ class SignalChannel < ApplicationCable::Channel
   def success(data)
     ActionCable.server.broadcast("#{data["roomId"]}", {
       :id => data["id"],
-      :type => "success"
+      :type => "success",
+      :username => data["username"]
     }) 
   end
 

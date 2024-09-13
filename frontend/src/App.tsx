@@ -7,6 +7,7 @@ function App() {
   const navigate: NavigateFunction = useNavigate();
 
   const handleJoin = () => {
+    const tempName = uuid();
     const element: HTMLInputElement | null = document.getElementById("username") as HTMLInputElement;
     if (element !== null) {
       ws.send(JSON.stringify({
@@ -16,10 +17,12 @@ function App() {
         }),
         data: JSON.stringify({
           action: "receive",
-          username: element.value !== "" ? element.value : `user${uuid()}` 
+          username: element.value !== "" ? element.value : `user${tempName}` 
         })
       }));
-      navigate("/room");
+      navigate("/room", { state: {
+        username: element.value !== "" ? element.value : `user${tempName}` 
+      } });
     } else {
       return;
     }

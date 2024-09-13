@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { ws } from "../main";
 import Image from "../../public/icon.jpg";
+import { Location, useLocation } from "react-router-dom";
 
 function Room() {
+    const location: Location = useLocation();
     const [offer, setOffer] = useState<boolean>(false);
     const [ans, setAns] = useState<boolean>(false);
     const [success, setSuccess] = useState<boolean>(false);
+    const [userName, _] = useState<string | null>(location.state.username);
+    const [remoteUserName, setRemoteUserName] = useState<string | null>(null);
     const localStream = useRef<HTMLVideoElement>(null);
     const remoteStream = useRef<HTMLVideoElement>(null);
     const connection: RTCPeerConnection = new RTCPeerConnection({
@@ -45,6 +49,7 @@ function Room() {
             }
             if (message.message?.type === "success" && message.message?.id !== window.sessionStorage.getItem("id")) {
                 if (success === false) {
+                    setRemoteUserName(message.message.username);
                     setSuccess(true);
                 } else {
                     return;
@@ -57,6 +62,7 @@ function Room() {
                 connection.setRemoteDescription(message.message.sdp).then(() => {
                     if (offer === false) {
                         if (ans === false) {
+                            setRemoteUserName(message.message.username);
                             setAns(true);
                         }
                         connection.createAnswer().then((sdp) => {
@@ -81,7 +87,8 @@ function Room() {
                                     data: JSON.stringify({
                                         action: "success",
                                         roomId: window.sessionStorage.getItem("roomId"),
-                                        id: window.sessionStorage.getItem("id")
+                                        id: window.sessionStorage.getItem("id"),
+                                        username: userName
                                     })
                                 }));
                                 if (success === false) {
@@ -161,7 +168,8 @@ function Room() {
                     action: "exchangeSdp",
                     roomId: window.sessionStorage.getItem("roomId"),
                     id: window.sessionStorage.getItem("id"),
-                    sdp: sdp
+                    sdp: sdp,
+                    username: userName
                 })
             }));
         }
@@ -173,13 +181,19 @@ function Room() {
 
   return (
     <div className="flex justify-center items-center h-full w-full">
-        <img src={Image} className="h-96 lg:w-72 w-96 fixed"></img>
+        <img src={Image} className="h-96 w-80 fixed z-0"></img>
         <div className="grid lg:grid-cols-2 lg:grid-rows-1 grid-rows-2 grid-cols-1 bg-gray-800 h-full w-full">
-            <div className="flex justify-center items-center bg-black">
-                <video className="lg:w-3/4 lg:h-2/4 w-3/4 h-3/4 bg-gray-800 object-cover scale-x-[-1] rounded-lg" autoPlay ref={localStream}></video>
+            <div className="flex flex-col justify-center items-center bg-black">
+                <div className="lg:w-3/4 lg:h-2/4 w-3/4 h-3/4 rounded-lg relative">
+                    <h2 className="text-green-50 font-bold md:text-2xl text-md z-20 absolute text-center w-full">{userName}</h2>
+                    <video className="w-full h-full bg-gray-800 object-cover scale-x-[-1] rounded-lg z-10" autoPlay ref={localStream}></video>
+                </div>
             </div>
-            <div className="flex justify-center items-center bg-black">
-                <video className="lg:w-3/4 lg:h-2/4 w-3/4 h-3/4 bg-gray-800 object-cover scale-x-[-1] rounded-lg" autoPlay ref={remoteStream}></video>
+            <div className="flex flex-col justify-center items-center bg-black">
+                <div className="lg:w-3/4 lg:h-2/4 w-3/4 h-3/4 rounded-lg relative">
+                    <h2 className="text-green-50 font-bold md:text-2xl text-md z-20 absolute text-center w-full">{remoteUserName}</h2>
+                    <video className="w-full h-full bg-gray-800 object-cover scale-x-[-1] rounded-lg z-10" autoPlay ref={remoteStream}></video>
+                </div>
             </div>
         </div>
     </div>
