@@ -20,7 +20,9 @@ function Room() {
 
     useEffect(() => {
         if (success === false) return;
-        navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream) => {
+        navigator.mediaDevices.getUserMedia({ video: true, audio: {
+            echoCancellation: true
+        } }).then((stream) => {
             stream.getTracks().forEach((track) => {
               connection.addTrack(track, stream);
             });
@@ -56,15 +58,12 @@ function Room() {
                 }
             }
             if (message.message?.type === "ice" && message.message?.id !== window.sessionStorage.getItem("id")) {
+                if (connection.remoteDescription === null) return;
                 connection.addIceCandidate(message.message.ice).then(() => console.log("ICE added")).catch((e) => console.log("ICE not added", e));
             }
             if (message.message?.type === "sdp" && message.message?.id !== window.sessionStorage.getItem("id")) {
-                connection.setRemoteDescription(message.message.sdp).then(() => {
-                    if (offer === false) {
-                        if (ans === false) {
-                            setRemoteUserName(message.message.username);
-                            setAns(true);
-                        }
+                if (message.message.sdp?.type === "offer") {
+                    connection.setRemoteDescription(message.message.sdp).then(() => {
                         connection.createAnswer().then((sdp) => {
                             connection.setLocalDescription(sdp).then(() => {
                                 ws.send(JSON.stringify({
@@ -76,65 +75,55 @@ function Room() {
                                         action: "exchangeSdp",
                                         roomId: window.sessionStorage.getItem("roomId"),
                                         id: window.sessionStorage.getItem("id"),
-                                        sdp: sdp
-                                    })
-                                }));
-                                ws.send(JSON.stringify({
-                                    command: "message",
-                                    identifier: JSON.stringify({
-                                        channel: "SignalChannel"
-                                    }),
-                                    data: JSON.stringify({
-                                        action: "success",
-                                        roomId: window.sessionStorage.getItem("roomId"),
-                                        id: window.sessionStorage.getItem("id"),
+                                        sdp: sdp,
                                         username: userName
                                     })
                                 }));
-                                if (success === false) {
-                                    setSuccess(true);
+                                if (ans === false && offer === false) {
+                                    setAns(true);
+                                    ws.send(JSON.stringify({
+                                        command: "message",
+                                        identifier: JSON.stringify({
+                                            channel: "SignalChannel"
+                                        }),
+                                        data: JSON.stringify({
+                                            action: "success",
+                                            roomId: window.sessionStorage.getItem("roomId"),
+                                            id: window.sessionStorage.getItem("id"),
+                                            username: userName
+                                        })
+                                    }));
+                                    setSuccess(true);   
                                 }
                             })
                         })
-                    }
-                }).catch((e) => console.log("Remote SDP not added", e));
+                    });
+                }
+                if (message.message.sdp?.type === "answer") {
+                    connection.setRemoteDescription(message.message.sdp).then(() => {
+                        console.log("connection initiated");
+                    })
+                }
             }
         }
     }
 
     connection.onnegotiationneeded = async () => {
-        if (offer === true) {
-            const sdp: RTCSessionDescriptionInit = await connection.createOffer();
-            await connection.setLocalDescription(sdp);
-            ws.send(JSON.stringify({
-                command: "message",
-                identifier: JSON.stringify({
-                    channel: "SignalChannel"
-                }),
-                data: JSON.stringify({
-                    action: "exchangeSdp",
-                    roomId: window.sessionStorage.getItem("roomId"),
-                    id: window.sessionStorage.getItem("id"),
-                    sdp: sdp
-                })
-            }));    
-        } 
-        else if (ans === true) {
-            const sdp: RTCSessionDescriptionInit = await connection.createAnswer();
-            await connection.setLocalDescription(sdp);
-            ws.send(JSON.stringify({
-                command: "message",
-                identifier: JSON.stringify({
-                    channel: "SignalChannel"
-                }),
-                data: JSON.stringify({
-                    action: "exchangeSdp",
-                    roomId: window.sessionStorage.getItem("roomId"),
-                    id: window.sessionStorage.getItem("id"),
-                    sdp: sdp
-                })
-            }));    
-        }
+        const sdp: RTCSessionDescriptionInit = await connection.createOffer();
+        await connection.setLocalDescription(sdp);
+        ws.send(JSON.stringify({
+            command: "message",
+            identifier: JSON.stringify({
+                channel: "SignalChannel"
+            }),
+            data: JSON.stringify({
+                action: "exchangeSdp",
+                roomId: window.sessionStorage.getItem("roomId"),
+                id: window.sessionStorage.getItem("id"),
+                sdp: sdp,
+                username: userName
+            })
+        }));   
     }
 
     connection.onicecandidate = (event: RTCPeerConnectionIceEvent) => {
@@ -178,15 +167,41 @@ function Room() {
 
     }, [offer]);
 
+    const handleMigration = () => {
+        ws.send(JSON.stringify({
+            command: "message",
+            identifier: JSON.stringify({
+                channel: "SignalChannel"
+            }),
+            data: JSON.stringify({
+                action: "disconnect",
+                roomId: window.sessionStorage.getItem("roomId")
+            })
+        }));
+
+        connection.close();
+
+        ws.send(JSON.stringify({
+            command: "message",
+            identifier: JSON.stringify({
+                channel: "SignalChannel"
+            }),
+            data: JSON.stringify({
+                action:"receive",
+                username: userName
+            })
+        }));
+    }
 
   return (
     <div className="flex justify-center items-center h-full w-full">
-        <img src={Image} className="h-96 w-80 fixed z-0"></img>
+        <img src={Image} className="h-80 w-72 fixed z-0 hidden lg:block mb-128"></img>
+        <button className="fixed  bg-purple-500 h-10 w-28 rounded-lg text-white font-medium cursor-pointer hover:bg-purple-700 transition-all duration-300 ease-in" onClick={handleMigration}>New Chat</button>
         <div className="grid lg:grid-cols-2 lg:grid-rows-1 grid-rows-2 grid-cols-1 bg-gray-800 h-full w-full">
             <div className="flex flex-col justify-center items-center bg-black">
                 <div className="lg:w-3/4 lg:h-2/4 w-3/4 h-3/4 rounded-lg relative">
                     <h2 className="text-green-50 font-bold md:text-2xl text-md z-20 absolute text-center w-full">{userName}</h2>
-                    <video className="w-full h-full bg-gray-800 object-cover scale-x-[-1] rounded-lg z-10" autoPlay ref={localStream}></video>
+                    <video className="w-full h-full bg-gray-800 object-cover scale-x-[-1] rounded-lg z-10" autoPlay ref={localStream} muted={true}></video>
                 </div>
             </div>
             <div className="flex flex-col justify-center items-center bg-black">

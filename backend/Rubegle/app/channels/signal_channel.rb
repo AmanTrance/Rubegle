@@ -49,6 +49,19 @@ class SignalChannel < ApplicationCable::Channel
     end 
   end
 
+  def disconnect(data)
+    ActionCable.server.broadcast("#{data["roomId"]}", {
+      :type => "disconnect"
+    })
+    if @@rooms.length != 0 then
+      tempRoom = @@rooms.pop
+      if data["roomId"] != "room#{tempRoom.id}" then
+        stop_stream_from "#{data["roomId"]}"
+        @@rooms << tempRoom
+      end
+    end
+  end
+
   def success(data)
     ActionCable.server.broadcast("#{data["roomId"]}", {
       :id => data["id"],
