@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { ws } from "../main";
 import Image from "../../public/icon.jpg";
-import { Location, useLocation } from "react-router-dom";
+import { Location, NavigateFunction, useLocation, useNavigate } from "react-router-dom";
 
 function Room() {
+    const navigate: NavigateFunction = useNavigate();
     const location: Location = useLocation();
     const [offer, setOffer] = useState<boolean>(false);
     const [ans, setAns] = useState<boolean>(false);
@@ -12,6 +13,7 @@ function Room() {
     const [remoteUserName, setRemoteUserName] = useState<string | null>(null);
     const localStream = useRef<HTMLVideoElement>(null);
     const remoteStream = useRef<HTMLVideoElement>(null);
+    let rtpSender: RTCRtpSender | null = null;
     const connection: RTCPeerConnection = new RTCPeerConnection({
         iceServers: [
             { urls: ["stun:stun2.l.google.com:19302"] }
@@ -19,12 +21,14 @@ function Room() {
     });
 
     useEffect(() => {
-        if (success === false) return;
+        if (success === false) {
+            return;
+        }
         navigator.mediaDevices.getUserMedia({ video: true, audio: {
             echoCancellation: true
         } }).then((stream) => {
             stream.getTracks().forEach((track) => {
-              connection.addTrack(track, stream);
+              rtpSender = connection.addTrack(track, stream);
             });
             if (localStream.current !== null) {
               localStream.current.srcObject = stream;
@@ -40,7 +44,7 @@ function Room() {
 
     ws.onmessage = (e: MessageEvent) => {
         const message = JSON.parse(e.data);
-        if (typeof message.message !== "number") {
+        if (typeof message.message !== "number" || typeof message.message !== "string") {
             if (message.message?.type === "roomId") {
                 window.sessionStorage.setItem("roomId", message.message.roomId);
             }
@@ -51,7 +55,6 @@ function Room() {
             }
             if (message.message?.type === "success" && message.message?.id !== window.sessionStorage.getItem("id")) {
                 if (success === false) {
-                    setRemoteUserName(message.message.username);
                     setSuccess(true);
                 } else {
                     return;
@@ -62,6 +65,9 @@ function Room() {
                 connection.addIceCandidate(message.message.ice).then(() => console.log("ICE added")).catch((e) => console.log("ICE not added", e));
             }
             if (message.message?.type === "sdp" && message.message?.id !== window.sessionStorage.getItem("id")) {
+                if (remoteUserName === null) {
+                    setRemoteUserName(message.message.username);
+                }
                 if (message.message.sdp?.type === "offer") {
                     connection.setRemoteDescription(message.message.sdp).then(() => {
                         connection.createAnswer().then((sdp) => {
@@ -90,40 +96,52 @@ function Room() {
                                             action: "success",
                                             roomId: window.sessionStorage.getItem("roomId"),
                                             id: window.sessionStorage.getItem("id"),
-                                            username: userName
                                         })
                                     }));
                                     setSuccess(true);   
                                 }
                             })
                         })
-                    });
-                }
-                if (message.message.sdp?.type === "answer") {
+                    }).catch((e) => console.log(e));
+                } else if (message.message.sdp?.type === "answer") {
                     connection.setRemoteDescription(message.message.sdp).then(() => {
                         console.log("connection initiated");
-                    })
+                    }).catch((e) => console.log(e));
                 }
+            }
+            if (message.message?.type === "disconnect" && connection.signalingState !== "closed") {
+                if (remoteStream.current !== null) {
+                    remoteStream.current.srcObject = null;
+                }
+                if (rtpSender !== null) {
+                    connection.removeTrack(rtpSender);
+                }
+                connection.close();
+                navigate("/");
             }
         }
     }
 
     connection.onnegotiationneeded = async () => {
-        const sdp: RTCSessionDescriptionInit = await connection.createOffer();
-        await connection.setLocalDescription(sdp);
-        ws.send(JSON.stringify({
-            command: "message",
-            identifier: JSON.stringify({
+        if (success === true) {
+            const sdp: RTCSessionDescriptionInit = await connection.createOffer();
+            await connection.setLocalDescription(sdp);
+            ws.send(JSON.stringify({
+                command: "message",
+                identifier: JSON.stringify({
                 channel: "SignalChannel"
             }),
-            data: JSON.stringify({
-                action: "exchangeSdp",
-                roomId: window.sessionStorage.getItem("roomId"),
-                id: window.sessionStorage.getItem("id"),
-                sdp: sdp,
-                username: userName
-            })
-        }));   
+                data: JSON.stringify({
+                    action: "exchangeSdp",
+                    roomId: window.sessionStorage.getItem("roomId"),
+                    id: window.sessionStorage.getItem("id"),
+                    sdp: sdp,
+                    username: userName
+                })
+            }));
+        } else {
+            return;
+        }
     }
 
     connection.onicecandidate = (event: RTCPeerConnectionIceEvent) => {
@@ -178,19 +196,11 @@ function Room() {
                 roomId: window.sessionStorage.getItem("roomId")
             })
         }));
-
+        if (rtpSender !== null) {
+            connection.removeTrack(rtpSender);
+        }
         connection.close();
-
-        ws.send(JSON.stringify({
-            command: "message",
-            identifier: JSON.stringify({
-                channel: "SignalChannel"
-            }),
-            data: JSON.stringify({
-                action:"receive",
-                username: userName
-            })
-        }));
+        navigate("/");
     }
 
   return (
